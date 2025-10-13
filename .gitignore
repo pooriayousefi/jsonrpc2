@@ -35,3 +35,9 @@ Thumbs.db
 *.tmp
 *.temp
 *.log
+
+# Medium article files (local only, not for GitHub)
+ARTICLE_README.md
+CARBON_SNIPPETS.md
+MEDIUM_ARTICLE.md
+PUBLISHING_GUIDE.md
