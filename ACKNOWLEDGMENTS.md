@@ -44,9 +44,16 @@ This project implements the following specification:
 ## Community
 
 Thanks to the C++ community for:
+
 - Continuous evolution of modern C++ standards (C++23)
 - Open source tools and libraries that make development more accessible
 - Sharing knowledge and best practices
+
+---
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
