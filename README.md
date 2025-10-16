@@ -7,7 +7,9 @@ A complete, header-only C++ implementation of the [JSON-RPC 2.0 specification](h
 - ✅ **Header-only library** - Just include and use
 - ✅ **Full JSON-RPC 2.0 compliance** - Supports all specification features
 - ✅ **Modern C++23** - Uses latest C++ standards
-- ✅ **Comprehensive test suite** - 31 unit tests + integration tests
+- ✅ **Type-safe handlers** - NEW! Work with C++ types directly instead of JSON
+- ✅ **Automatic serialization** - NEW! Automatic JSON ↔ C++ type conversion
+- ✅ **Comprehensive test suite** - 43 unit tests + integration tests
 - ✅ **Real-world examples** - Calculator, CRUD database, and more
 - ✅ **Complete tutorials** - Learn JSON and JSON-RPC from scratch
 - ✅ **Advanced features** - Progress reporting, cancellation, batch processing
@@ -16,11 +18,13 @@ A complete, header-only C++ implementation of the [JSON-RPC 2.0 specification](h
 ## Table of Contents
 
 - [Quick Start](#quick-start)
+  - [Type-Safe Handlers (NEW!)](#4-new-type-safe-handlers)
 - [Building](#building)
 - [Usage](#usage)
 - [Examples](#examples)
 - [Tutorials](#tutorials)
 - [API Documentation](#api-documentation)
+  - [Serialization Guide](docs/SERIALIZATION.md)
 - [Testing](#testing)
 - [Project Structure](#project-structure)
 - [License](#license)
@@ -71,6 +75,47 @@ client.send_request("add", json::array({5, 3}),
     }
 );
 ```
+
+### 4. NEW! Type-Safe Handlers
+
+Work with C++ types directly instead of JSON:
+
+```cpp
+// Define your types
+struct Point {
+    double x, y;
+};
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Point, x, y)
+
+// Register typed handler
+dispatcher server;
+server.add_typed<Point, Point>("move", [](Point p) {
+    p.x += 10;
+    p.y += 20;
+    return p;
+});
+
+// Or use basic types
+server.add_typed<int, int>("double", [](int x) { return x * 2; });
+
+// Client side with types
+endpoint client(sender);
+client.send_request_typed<std::string, std::string>(
+    "greet",
+    std::string("Alice"),
+    [](std::string result) {
+        std::cout << "Got: " << result << "\n";
+    }
+);
+```
+
+**Benefits:**
+- ✅ Type safety with compile-time checking
+- ✅ No manual JSON conversion
+- ✅ Works with any serializable type
+- ✅ Automatic error handling
+
+📖 **Full Guide:** [docs/SERIALIZATION.md](docs/SERIALIZATION.md)
 
 ## Building
 
