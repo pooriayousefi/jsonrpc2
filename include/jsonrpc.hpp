@@ -61,7 +61,8 @@ namespace pooriayousefi
 
     inline bool is_response(const json &j)
     {
-        return j.is_object() && j.value("jsonrpc", "") == "2.0" && j.contains("id") && (j.contains("result") ^ j.contains("error"));
+        return j.is_object() && j.value("jsonrpc", "") == "2.0" && j.contains("id") &&
+               (j.contains("result") ^ j.contains("error"));
     }
 
     // Validation utilities
@@ -150,7 +151,8 @@ namespace pooriayousefi
     }
 
     // Builders
-    inline json make_request(const std::variant<std::nullptr_t, std::string, int64_t, uint64_t> &id, const std::string &method, const json &params = json{})
+    inline json make_request(const std::variant<std::nullptr_t, std::string, int64_t, uint64_t> &id,
+                             const std::string &method, const json &params = json{})
     {
         json j = {{"jsonrpc", "2.0"}, {"method", method}};
         if (!params.is_null() && !params.empty())
@@ -186,13 +188,161 @@ namespace pooriayousefi
 
     [[noreturn]] inline void throw_rpc_error(error e) { throw rpc_exception(std::move(e)); }
 
+    // --- Serialization/Deserialization Support ---
+    namespace detail
+    {
+        // Helper to deserialize params based on ParamsT type
+        template <typename ParamsT> ParamsT deserialize_params(const json &params)
+        {
+            if constexpr (std::is_same_v<ParamsT, json>)
+            {
+                // Pass through raw JSON
+                return params;
+            }
+            else if constexpr (std::is_same_v<ParamsT, void>)
+            {
+                // No params expected
+                static_assert(std::is_same_v<ParamsT, void>,
+                              "void params not directly deserializable");
+            }
+            else
+            {
+                // Params must be array or object per JSON-RPC 2.0 spec
+                // If it's an array with one element, extract that element
+                // Otherwise, deserialize the whole structure
+                if (params.is_array() && params.size() == 1)
+                {
+                    return params[0].get<ParamsT>();
+                }
+                else
+                {
+                    return params.get<ParamsT>();
+                }
+            }
+        }
+
+        // Helper to serialize params for sending (wraps in array if needed)
+        template <typename ParamsT> json serialize_params(ParamsT &&params)
+        {
+            if constexpr (std::is_same_v<std::decay_t<ParamsT>, json>)
+            {
+                // If already JSON, check if it's array or object
+                json j = std::forward<ParamsT>(params);
+                if (j.is_array() || j.is_object())
+                {
+                    return j;
+                }
+                else
+                {
+                    // Wrap primitive in array
+                    return json::array({j});
+                }
+            }
+            else
+            {
+                // Convert to JSON
+                json j = json(std::forward<ParamsT>(params));
+                // Wrap non-array/object in array for JSON-RPC 2.0 compliance
+                if (!j.is_array() && !j.is_object())
+                {
+                    return json::array({j});
+                }
+                return j;
+            }
+        }
+
+        // Helper to serialize result based on ResultT type
+        template <typename ResultT> json serialize_result(ResultT &&result)
+        {
+            if constexpr (std::is_same_v<std::decay_t<ResultT>, json>)
+            {
+                // Pass through raw JSON
+                return std::forward<ResultT>(result);
+            }
+            else if constexpr (std::is_same_v<std::decay_t<ResultT>, void>)
+            {
+                // Void return - return null
+                return json(nullptr);
+            }
+            else
+            {
+                // Use nlohmann::json's automatic conversion
+                return json(std::forward<ResultT>(result));
+            }
+        }
+
+        // Wrapper to create typed handler from function with C++ types
+        template <typename ParamsT, typename ResultT>
+        std::function<json(const json &)> make_typed_handler(std::function<ResultT(ParamsT)> fn)
+        {
+            return [fn = std::move(fn)](const json &params) -> json
+            {
+                try
+                {
+                    ParamsT typed_params = deserialize_params<ParamsT>(params);
+                    if constexpr (std::is_same_v<ResultT, void>)
+                    {
+                        fn(std::move(typed_params));
+                        return json(nullptr);
+                    }
+                    else
+                    {
+                        ResultT result = fn(std::move(typed_params));
+                        return serialize_result(std::move(result));
+                    }
+                }
+                catch (const json::exception &ex)
+                {
+                    // JSON parsing/conversion error
+                    error e = invalid_params;
+                    e.data = json{{"what", ex.what()}};
+                    throw rpc_exception(e);
+                }
+            };
+        }
+
+        // Wrapper for no-params handlers
+        template <typename ResultT>
+        std::function<json(const json &)> make_no_params_handler(std::function<ResultT()> fn)
+        {
+            return [fn = std::move(fn)](const json &) -> json
+            {
+                if constexpr (std::is_same_v<ResultT, void>)
+                {
+                    fn();
+                    return json(nullptr);
+                }
+                else
+                {
+                    ResultT result = fn();
+                    return serialize_result(std::move(result));
+                }
+            };
+        }
+    } // namespace detail
+
     // Dispatcher
     class dispatcher
     {
-    public:
+      public:
         using handler_t = std::function<json(const json &params)>; // params may be array or object
 
+        // Add raw JSON handler (original method)
         void add(const std::string &method, handler_t fn) { handlers_[method] = std::move(fn); }
+
+        // Add typed handler: takes C++ type ParamsT and returns ResultT
+        template <typename ParamsT, typename ResultT>
+        void add_typed(const std::string &method, std::function<ResultT(ParamsT)> fn)
+        {
+            handlers_[method] = detail::make_typed_handler<ParamsT, ResultT>(std::move(fn));
+        }
+
+        // Add no-params handler: takes no parameters and returns ResultT
+        template <typename ResultT>
+        void add_no_params(const std::string &method, std::function<ResultT()> fn)
+        {
+            handlers_[method] = detail::make_no_params_handler<ResultT>(std::move(fn));
+        }
 
         // Handle a single request/notification. Returns optional response (none for notifications).
         std::optional<json> handle_single(const json &msg) const
@@ -267,7 +417,7 @@ namespace pooriayousefi
             }
         }
 
-    private:
+      private:
         std::unordered_map<std::string, handler_t> handlers_;
     };
 
@@ -295,7 +445,7 @@ namespace pooriayousefi
     // --- Endpoint: transport + client/server conveniences (MCP/LSP-style) ---
     class endpoint
     {
-    public:
+      public:
         using send_fn = std::function<void(const json &)>;
         using result_cb = std::function<void(const json &)>;
         using error_cb = std::function<void(const json &)>;
@@ -303,38 +453,34 @@ namespace pooriayousefi
         explicit endpoint(send_fn sender) : send_(std::move(sender))
         {
             // Register built-in notifications
-            disp_.add(
-                "$/cancelRequest",
-                [this](const json &params) -> json
-                {
-                    // params: { id: string|number|null }
-                    if (!params.is_object() || !params.contains("id"))
-                        return json{};
-                    auto key = key_for_id(params["id"]);
-                    auto &flag = server_cancels_[key];
-                    if (!flag)
-                        flag = std::make_shared<std::atomic_bool>(false);
-                    flag->store(true, std::memory_order_relaxed);
-                    return json{}; // notification: ignored
-                }
-            );
+            disp_.add("$/cancelRequest",
+                      [this](const json &params) -> json
+                      {
+                          // params: { id: string|number|null }
+                          if (!params.is_object() || !params.contains("id"))
+                              return json{};
+                          auto key = key_for_id(params["id"]);
+                          auto &flag = server_cancels_[key];
+                          if (!flag)
+                              flag = std::make_shared<std::atomic_bool>(false);
+                          flag->store(true, std::memory_order_relaxed);
+                          return json{}; // notification: ignored
+                      });
 
-            disp_.add(
-                "$/progress",
-                [this](const json &params) -> json
-                {
-                    // params: { token: string, value: any }
-                    if (!params.is_object())
-                        return json{};
-                    std::string token = params.value("token", std::string());
-                    if (token.empty())
-                        return json{};
-                    auto it = progress_handlers_.find(token);
-                    if (it != progress_handlers_.end() && it->second)
-                        it->second(params.value("value", json{}));
-                    return json{}; // notification
-                }
-            );
+            disp_.add("$/progress",
+                      [this](const json &params) -> json
+                      {
+                          // params: { token: string, value: any }
+                          if (!params.is_object())
+                              return json{};
+                          std::string token = params.value("token", std::string());
+                          if (token.empty())
+                              return json{};
+                          auto it = progress_handlers_.find(token);
+                          if (it != progress_handlers_.end() && it->second)
+                              it->second(params.value("value", json{}));
+                          return json{}; // notification
+                      });
 
             disp_.add("initialize",
                       [this](const json &params) -> json
@@ -392,8 +538,24 @@ namespace pooriayousefi
                 });
         }
 
+        // Server registration with typed parameters and return type
+        template <typename ParamsT, typename ResultT>
+        void add_typed(const std::string &method, std::function<ResultT(ParamsT)> fn)
+        {
+            // Wrap the typed function with the endpoint context
+            add(method, detail::make_typed_handler<ParamsT, ResultT>(std::move(fn)));
+        }
+
+        // Server registration with no parameters
+        template <typename ResultT>
+        void add_no_params(const std::string &method, std::function<ResultT()> fn)
+        {
+            add(method, detail::make_no_params_handler<ResultT>(std::move(fn)));
+        }
+
         // Client-side: send request (auto-generated id)
-        std::string send_request(const std::string &method, const json &params, result_cb on_result, error_cb on_error)
+        std::string send_request(const std::string &method, const json &params, result_cb on_result,
+                                 error_cb on_error)
         {
             std::string id = gen_id();
             pending_[id] = {std::move(on_result), std::move(on_error)};
@@ -401,8 +563,32 @@ namespace pooriayousefi
             return id;
         }
 
+        // Client-side: send typed request with automatic serialization/deserialization
+        template <typename ParamsT, typename ResultT>
+        std::string send_request_typed(const std::string &method, const ParamsT &params,
+                                       std::function<void(ResultT)> on_result,
+                                       error_cb on_error = nullptr)
+        {
+            // Serialize params to JSON (wraps in array if needed)
+            json params_json = detail::serialize_params(params);
+
+            // Wrap the typed callback to deserialize the result
+            result_cb wrapped_callback = [on_result = std::move(on_result)](const json &result_json)
+            {
+                if (on_result)
+                {
+                    ResultT typed_result = detail::deserialize_params<ResultT>(result_json);
+                    on_result(std::move(typed_result));
+                }
+            };
+
+            return send_request(method, params_json, std::move(wrapped_callback),
+                                std::move(on_error));
+        }
+
         // Client-side: send request with explicit id (useful for testing/cancellation ordering)
-        void send_request_with_id(const std::string &id, const std::string &method, const json &params, result_cb on_result, error_cb on_error)
+        void send_request_with_id(const std::string &id, const std::string &method,
+                                  const json &params, result_cb on_result, error_cb on_error)
         {
             pending_[id] = {std::move(on_result), std::move(on_error)};
             send_(make_request(id, method, params));
@@ -412,6 +598,14 @@ namespace pooriayousefi
         void send_notification(const std::string &method, const json &params = json{})
         {
             send_(make_notification(method, params));
+        }
+
+        // Client-side: typed notification
+        template <typename ParamsT>
+        void send_notification_typed(const std::string &method, const ParamsT &params)
+        {
+            json params_json = detail::serialize_params(params);
+            send_notification(method, params_json);
         }
 
         // Progress helpers
@@ -501,7 +695,7 @@ namespace pooriayousefi
             }
         }
 
-    private:
+      private:
         // Helper: normalize id into string key
         static std::string key_for_id(const json &id)
         {

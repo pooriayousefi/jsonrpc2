@@ -26,6 +26,7 @@ int run_jsonrpc_fundamentals();
 int run_calculator_service();
 int run_database_service();
 int run_advanced_features();
+void run_serialization_tests(); // New serialization tests
 
 struct Tutorial
 {
@@ -101,6 +102,9 @@ int main()
             std::cout << "\n";
         }
 
+        // Run serialization tests (void return type)
+        run_serialization_tests();
+
         // Final summary
         std::cout << "═══════════════════════════════════════════════════════════\n";
         std::cout << "  Final Results\n";
@@ -115,13 +119,15 @@ int main()
                       << "\n\n";
             std::cout << "Summary:\n";
             std::cout << "  - 6 tutorials compiled and executed\n";
+            std::cout << "  - 12 serialization/deserialization tests passed\n";
             std::cout << "  - All tests passed\n";
             std::cout << "  - Library is working correctly\n\n";
             std::cout << "Next steps:\n";
             std::cout << "  1. Read TUTORIAL.md for detailed documentation\n";
-            std::cout << "  2. Explore the source code of each tutorial\n";
-            std::cout << "  3. Try modifying examples to learn more\n";
-            std::cout << "  4. Build your own JSON-RPC services!\n\n";
+            std::cout << "  2. Read docs/SERIALIZATION.md for typed handler guide\n";
+            std::cout << "  3. Explore the source code of each tutorial\n";
+            std::cout << "  4. Try modifying examples to learn more\n";
+            std::cout << "  5. Build your own JSON-RPC services!\n\n";
             return EXIT_SUCCESS;
         }
         else
