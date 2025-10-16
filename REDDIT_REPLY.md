@@ -12,7 +12,8 @@ You're absolutely right - working with C++ types directly is much more ergonomic
 
 The library now supports **typed handlers** that work directly with C++ types:
 
-### Before (Raw JSON):
+### Before (Raw JSON)
+
 ```cpp
 disp.add("add", [](const json &params) -> json {
     int a = params["a"].get<int>();
@@ -21,7 +22,8 @@ disp.add("add", [](const json &params) -> json {
 });
 ```
 
-### After (Typed):
+### After (Typed)
+
 ```cpp
 struct AddParams {
     int a, b;
@@ -44,11 +46,13 @@ disp.add_typed<AddParams, int>("add", [](AddParams params) {
 ## Examples
 
 **Basic Types:**
+
 ```cpp
 disp.add_typed<int, int>("double", [](int x) { return x * 2; });
 ```
 
 **Custom Structs:**
+
 ```cpp
 struct Point { double x, y; };
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Point, x, y)
@@ -61,6 +65,7 @@ disp.add_typed<Point, Point>("move", [](Point p) {
 ```
 
 **Vectors:**
+
 ```cpp
 disp.add_typed<std::vector<int>, std::vector<int>>(
     "double_all", [](std::vector<int> nums) {
@@ -70,7 +75,7 @@ disp.add_typed<std::vector<int>, std::vector<int>>(
 );
 ```
 
-## Client Side Too!
+## Client Side Too
 
 ```cpp
 endpoint ep(sender);
@@ -91,6 +96,7 @@ Full guide with examples: [`docs/SERIALIZATION.md`](https://github.com/pooriayou
 ## Tests
 
 Added 12 comprehensive tests covering:
+
 - Basic types (int, string)
 - Custom structs
 - STL containers
@@ -112,11 +118,11 @@ Thanks for the suggestion! This makes the API much more pleasant to use. 🚀
 ---
 
 **Commit:** [`19e7ad3`](https://github.com/pooriayousefi/jsonrpc2/commit/19e7ad3)  
-**Repository:** https://github.com/pooriayousefi/jsonrpc2
+**Repository:** <https://github.com/pooriayousefi/jsonrpc2>
 
 ---
 
-## Shorter Version (if needed):
+## Shorter Version (if needed)
 
 **Implemented! 🎉**
 

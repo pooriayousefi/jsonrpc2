@@ -110,6 +110,7 @@ client.send_request_typed<std::string, std::string>(
 ```
 
 **Benefits:**
+
 - ✅ Type safety with compile-time checking
 - ✅ No manual JSON conversion
 - ✅ Works with any serializable type
